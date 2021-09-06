@@ -2,7 +2,8 @@ import hmac
 from logging import debug
 import sqlite3
 import os
-from flask import Flask, request, jsonify, flash, redirect, url_for
+from flask import Flask, request, jsonify, flash, redirect, url_for, send_from_directory
+from flask.scaffold import F
 from flask_mail import Mail, Message
 from flask_jwt import JWT, jwt_required, current_identity
 from flask_cors import CORS
@@ -52,7 +53,7 @@ class Database(object):
 
     def register_user(self, name, surname, email, city, username, password):
         self.cursor.execute(
-            f"INSERT INTO users (surname, name, email, city, username, password) values('{name}', '{surname}', '{email}', '{city}', '{username}', '{password}')")
+            f"INSERT INTO users (surname, name, email, city, username, password) values(?, ?, ?, ?, ?, ?)", [name, surname, email, city, username, password])
         self.db.commit()
 
     # viewing books based on city
@@ -153,6 +154,8 @@ users = fetch_users()
 username_table = {u.username: u for u in users}
 userid_table = {u.id: u for u in users}
 
+print(username_table)
+
 app = Flask(__name__, static_url_path='/')
 CORS(app)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -179,55 +182,43 @@ def registration():
     response = {}
 
     if request.method == "POST":
-        name = request.form['name']
-        surname = request.form['surname']
+        name = request.form['first_name']
+        surname = request.form['last_name']
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
         city = request.form['city']
 
-        print(request.json)
-
         database = Database()
         database.register_user(name, surname, email, city, username, password)
 
-        with sqlite3.connect("books_online_api.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users VALUES(null,"
-                           "'" + name + "',"
-                           "'" + surname + "',"
-                           "'" + email + "',"
-                                        "'" + city + "',"
-                           "'" + username + "',"
-                           "'" + password + "')")
-
         response["status"] = 200
         response["message"] = "User added successfully"
-    elif request.method == "POST":
-        name = request.json['name']
-        surname = request.json['surname']
-        username = request.json['username']
-        password = request.json['password']
-        email = request.json['email']
-        city = request.json['city']
+    # elif request.method == "POST":
+    #     name = request.json['name']
+    #     surname = request.json['surname']
+    #     username = request.json['username']
+    #     password = request.json['password']
+    #     email = request.json['email']
+    #     city = request.json['city']
 
-        print(request.json)
+    #     print(request.json)
 
-        database = Database()
-        database.register_user(name, surname, email, city, username, password)
+    #     database = Database()
+    #     database.register_user(name, surname, email, city, username, password)
 
-        with sqlite3.connect("books_online_api.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users VALUES(null,"
-                           "'" + name + "',"
-                           "'" + surname + "',"
-                           "'" + email + "',"
-                                        "'" + city + "',"
-                           "'" + username + "',"
-                           "'" + password + "')")
+    #     with sqlite3.connect("books_online_api.db") as conn:
+    #         cursor = conn.cursor()
+    #         cursor.execute("INSERT INTO users VALUES(null,"
+    #                        "'" + name + "',"
+    #                        "'" + surname + "',"
+    #                        "'" + email + "',"
+    #                                     "'" + city + "',"
+    #                        "'" + username + "',"
+    #                        "'" + password + "')")
 
-        response["status"] = 200
-        response["message"] = "User added successfully"
+    #     response["status"] = 200
+    #     response["message"] = "User added successfully"
 
     # if response["status_code"] == 201:
     #             msg = Message('Registration Successful', sender='lottogirl92@gmail.com', recipients=[email])
@@ -252,39 +243,68 @@ def get_all_users():
 def view_all_books():
     response = {}
 
+    books = []
+
     with sqlite3.connect("books_online_api.db") as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM books")
+        cursor.execute("SELECT book_title, book_image, author, description, category, price, id FROM books")
         all_books = cursor.fetchall()
 
+        for book in all_books:
+            books.append({ 'title': book[0], 'filename': book[1], 'author': book[2], 'description': book[3], 'category': book[4], 'price': book[5], 'id': book[6] })
+
+
     response['status_code'] = 200
-    response['data'] = all_books
+    response['data'] = books
     return jsonify(response)
 
+
+@app.route('/view_books/<int:user_id>', methods=['GET'])
+def view_all_books_by_user_id(user_id):
+    response = {}
+
+    books = []
+
+    with sqlite3.connect("books_online_api.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT book_title, book_image, author, description, category, price, id FROM books where user_id = ?", [user_id])
+        all_books = cursor.fetchall()
+
+        for book in all_books:
+            books.append({ 'title': book[0], 'filename': book[1], 'author': book[2], 'description': book[3], 'category': book[4], 'price': book[5], 'id': book[6] })
+
+    response['status_code'] = 200
+    response['data'] = books
+    return jsonify(response)
+
+
+@app.route('/view_book_by_id/<int:book_id>', methods=['GET'])
+def view_book_by_id(book_id):
+    response = {}
+
+    book = {}
+
+    with sqlite3.connect("books_online_api.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT book_title, book_image, author, description, category, price, id FROM books where id = ?", [book_id])
+        resp = cursor.fetchall()
+        all_books = resp[0]
+
+        book['title'] = all_books[0]
+        book['filename'] = all_books[1]
+        book['author'] = all_books[2]
+        book['description'] = all_books[3]
+        book['category'] = all_books[4]
+        book['price'] = all_books[5]
+        book['id'] = all_books[6]
+
+    response['status_code'] = 200
+    response['data'] = book
+    return jsonify(response)
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-@app.route('/add_image/', methods=['POST'])
-def add_image():
-    if request.method == 'POST':
-        # check if the post request has the file part
-        if 'file' not in request.files:
-            flash('No file part')
-            return redirect(request.url)
-        file = request.files['file']
-        # If the user does not select a file, the browser submits an
-        # empty file without a filename.
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(request.url)
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            # return redirect(url_for('download_file', name=filename))
-            return {'message': 'success'}
 
 
 @app.route('/add_books/', methods=['POST'])
@@ -292,24 +312,43 @@ def add_image():
 def add_books():
     response = {}
 
-    if request.method == "POST":
-        user_id = request.form['user_id']
-        book_image = request.form['book_image']
-        book_title = request.form['book_title']
-        author = request.form['author']
-        description = request.form['description']
-        category = request.form['category']
-        price = request.form['price']
+    # check if the post request has the file part
+    if 'file' not in request.files:
+        flash('No file part')
+        return redirect(request.url)
+    file = request.files['file']
+    # If the user does not select a file, the browser submits an
+    # empty file without a filename.
+    if file.filename == '':
+        flash('No selected file')
+        return redirect(request.url)
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
-        with sqlite3.connect("books_online_api.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO books (user_id, book_image, book_title, author, description, category, price) values(?, ?, ?, ?, ?, ?, ?)", [
-                           user_id, book_image, book_title, author, description, category, price])
-            conn.commit()
+        if request.method == "POST":
+            user_id = 1
+            # book_image = request.form['book_image']
+            book_title = request.form['book_title']
+            author = request.form['author']
+            description = request.form['description']
+            category = request.form['category']
+            price = request.form['price']
 
-            response["status_code"] = 201
-            response["message"] = "Book added successfully"
-        return response
+            with sqlite3.connect("books_online_api.db") as conn:
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO books (user_id, book_image, book_title, author, description, category, price) values(?, ?, ?, ?, ?, ?, ?)", [
+                            user_id, file.filename, book_title, author, description, category, price])
+                conn.commit()
+
+                response["status_code"] = 201
+                response["message"] = "Book added successfully"
+            return response
+
+
+@app.route("/view_image/<name>", methods=["GET"])
+def get_image(name):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], name)
 
 
 @app.route('/delete/<int:id>/', methods=['GET'])
@@ -331,25 +370,27 @@ def edit_book(id):
 
     if request.method == "PUT":
         with sqlite3.connect('books_online_api.db') as conn:
-            incoming_data = dict(request.json)
+            incoming_data = dict(request.form)
             put_data = {}
 
-            if incoming_data.get("book_image") is not None:
-                put_data["book_image"] = incoming_data.get("book_image")
-                with sqlite3.connect('books_online_api.db') as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "UPDATE books SET book_image =? WHERE id=?", (put_data["book_image"], id))
-                    conn.commit()
-                    response['message'] = "Update was successfully"
-                    response['status_code'] = 200
+            print(incoming_data)
+
+            # if incoming_data.get("book_image") is not None:
+            #     put_data["book_image"] = incoming_data.get("book_image")
+            #     with sqlite3.connect('books_online_api.db') as conn:
+            #         cursor = conn.cursor()
+            #         cursor.execute(
+            #             "UPDATE books SET book_image =? WHERE id=?", (put_data["book_image"], id))
+            #         conn.commit()
+            #         response['message'] = "Update was successfully"
+            #         response['status_code'] = 200
             if incoming_data.get("book_title") is not None:
                 put_data['book_title'] = incoming_data.get('book_title')
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
                     cursor.execute(
-                        "UPDATE books SET book_title =? WHERE id=?", (put_data["book_title"], id))
+                        "UPDATE books SET book_title =? WHERE id=?", [put_data["book_title"], id])
                     conn.commit()
 
                     response["book_title"] = "Content updated successfully"
