@@ -1,10 +1,16 @@
 import hmac
 from logging import debug
 import sqlite3
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, flash, redirect, url_for
 from flask_mail import Mail, Message
 from flask_jwt import JWT, jwt_required, current_identity
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = './images'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+
 
 class User(object):
     def __init__(self, id, name, surname, email, city, username, password):
@@ -17,7 +23,7 @@ class User(object):
         self.password = password
 
     def get_user_object(self):
-        return { 
+        return {
             'id': self.id,
             'name': self.name,
             'surname': self.surname,
@@ -25,7 +31,8 @@ class User(object):
             'city': self.city,
             'username': self.username,
             'password': self.password
-            }
+        }
+
 
 class Book(object):
     def __init__(self, user_id, book_image, book_title, author, description, category, price):
@@ -44,18 +51,19 @@ class Database(object):
         self.cursor = self.db.cursor()
 
     def register_user(self, name, surname, email, city, username, password):
-        self.cursor.execute(f"INSERT INTO users (surname, name, email, city, username, password) values('{name}', '{surname}', '{email}', '{city}', '{username}', '{password}')")
+        self.cursor.execute(
+            f"INSERT INTO users (surname, name, email, city, username, password) values('{name}', '{surname}', '{email}', '{city}', '{username}', '{password}')")
         self.db.commit()
 
-    # viewing books based on city 
+    # viewing books based on city
     def view_books_in_city(self, city):
         self.cursor.execute(f"SELECT * FROM books WHERE city = '{city}'")
         self.cursor.fetchall()
 
     # viewing all books from everyone everywhere
-    
 
     # view by author
+
     def view_by_author(self, author):
         self.cursor.execute(f"SELECT * FROM books WHERE author = '{author}'")
         self.cursor.fetchall()
@@ -73,6 +81,7 @@ def user_table():
                  "username VARCHAR NOT NULL,"
                  "password VARCHAR NOT NULL)")
     conn.close()
+
 
 def book_table():
     conn = sqlite3.connect('books_online_api.db')
@@ -105,8 +114,10 @@ def book_table():
 #                  "FOREIGN KEY(user_id) REFERENCES users(id))")
 #     conn.close()
 
+
 user_table()
 book_table()
+
 
 def identity(payload):
     user_id = payload['identity']
@@ -123,12 +134,14 @@ def authenticate(username, password):
 def fetch_users():
     with sqlite3.connect('books_online_api.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, surname, email, city, username, password FROM users")
+        cursor.execute(
+            "SELECT id, name, surname, email, city, username, password FROM users")
         users = cursor.fetchall()
         new_data = []
         #       for loop
         for data in users:
-            user = User(data[0], data[1], data[2], data[3], data[4], data[5], data[6])
+            user = User(data[0], data[1], data[2],
+                        data[3], data[4], data[5], data[6])
             new_data.append(user)
     return new_data
 
@@ -140,8 +153,9 @@ users = fetch_users()
 username_table = {u.username: u for u in users}
 userid_table = {u.id: u for u in users}
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/')
 CORS(app)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 465
 app.config['MAIL_USERNAME'] = 'lottogirl92@gmail.com'
@@ -173,21 +187,19 @@ def registration():
         city = request.form['city']
 
         print(request.json)
-        
+
         database = Database()
         database.register_user(name, surname, email, city, username, password)
-
 
         with sqlite3.connect("books_online_api.db") as conn:
             cursor = conn.cursor()
             cursor.execute("INSERT INTO users VALUES(null,"
                            "'" + name + "',"
-                                "'" + surname + "',"
-                                    "'" + email + "',"
+                           "'" + surname + "',"
+                           "'" + email + "',"
                                         "'" + city + "',"
-                                            "'" + username + "',"
-                                                 "'" + password + "')")
-
+                           "'" + username + "',"
+                           "'" + password + "')")
 
         response["status"] = 200
         response["message"] = "User added successfully"
@@ -200,7 +212,7 @@ def registration():
         city = request.json['city']
 
         print(request.json)
-        
+
         database = Database()
         database.register_user(name, surname, email, city, username, password)
 
@@ -208,11 +220,11 @@ def registration():
             cursor = conn.cursor()
             cursor.execute("INSERT INTO users VALUES(null,"
                            "'" + name + "',"
-                                "'" + surname + "',"
-                                    "'" + email + "',"
+                           "'" + surname + "',"
+                           "'" + email + "',"
                                         "'" + city + "',"
-                                            "'" + username + "',"
-                                                 "'" + password + "')")
+                           "'" + username + "',"
+                           "'" + password + "')")
 
         response["status"] = 200
         response["message"] = "User added successfully"
@@ -235,6 +247,7 @@ def get_all_users():
 
     return jsonify(new_users)
 
+
 @app.route('/view_books/', methods=['GET'])
 def view_all_books():
     response = {}
@@ -246,7 +259,33 @@ def view_all_books():
 
     response['status_code'] = 200
     response['data'] = all_books
-    return jsonify(response)    
+    return jsonify(response)
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/add_image/', methods=['POST'])
+def add_image():
+    if request.method == 'POST':
+        # check if the post request has the file part
+        if 'file' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+        file = request.files['file']
+        # If the user does not select a file, the browser submits an
+        # empty file without a filename.
+        if file.filename == '':
+            flash('No selected file')
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            # return redirect(url_for('download_file', name=filename))
+            return {'message': 'success'}
+
 
 @app.route('/add_books/', methods=['POST'])
 # @jwt_required()
@@ -260,13 +299,14 @@ def add_books():
         author = request.form['author']
         description = request.form['description']
         category = request.form['category']
-        price = request.form['price']   
+        price = request.form['price']
 
         with sqlite3.connect("books_online_api.db") as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO books (user_id, book_image, book_title, author, description, category, price) values(?, ?, ?, ?, ?, ?, ?)", [user_id, book_image, book_title, author, description, category, price])
+            cursor.execute("INSERT INTO books (user_id, book_image, book_title, author, description, category, price) values(?, ?, ?, ?, ?, ?, ?)", [
+                           user_id, book_image, book_title, author, description, category, price])
             conn.commit()
-            
+
             response["status_code"] = 201
             response["message"] = "Book added successfully"
         return response
@@ -298,7 +338,8 @@ def edit_book(id):
                 put_data["book_image"] = incoming_data.get("book_image")
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET book_image =? WHERE id=?", (put_data["book_image"], id))
+                    cursor.execute(
+                        "UPDATE books SET book_image =? WHERE id=?", (put_data["book_image"], id))
                     conn.commit()
                     response['message'] = "Update was successfully"
                     response['status_code'] = 200
@@ -307,7 +348,8 @@ def edit_book(id):
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET book_title =? WHERE id=?", (put_data["book_title"], id))
+                    cursor.execute(
+                        "UPDATE books SET book_title =? WHERE id=?", (put_data["book_title"], id))
                     conn.commit()
 
                     response["book_title"] = "Content updated successfully"
@@ -317,7 +359,8 @@ def edit_book(id):
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET author =? WHERE id=?", (put_data["author"], id))
+                    cursor.execute(
+                        "UPDATE books SET author =? WHERE id=?", (put_data["author"], id))
                     conn.commit()
 
                     response["author"] = "Content updated successfully"
@@ -327,7 +370,8 @@ def edit_book(id):
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET author =? WHERE id=?", (put_data["author"], id))
+                    cursor.execute(
+                        "UPDATE books SET author =? WHERE id=?", (put_data["author"], id))
                     conn.commit()
 
                     response["author"] = "Author updated successfully"
@@ -338,7 +382,8 @@ def edit_book(id):
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET description =? WHERE id=?", (put_data["description"], id))
+                    cursor.execute(
+                        "UPDATE books SET description =? WHERE id=?", (put_data["description"], id))
                     conn.commit()
 
                     response["description"] = "Description updated successfully"
@@ -348,7 +393,8 @@ def edit_book(id):
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET category =? WHERE id=?", (put_data["category"], id))
+                    cursor.execute(
+                        "UPDATE books SET category =? WHERE id=?", (put_data["category"], id))
                     conn.commit()
 
                     response["category"] = "Category updated successfully"
@@ -358,7 +404,8 @@ def edit_book(id):
 
                 with sqlite3.connect('books_online_api.db') as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE books SET price =? WHERE id=?", (put_data["price"], id))
+                    cursor.execute(
+                        "UPDATE books SET price =? WHERE id=?", (put_data["price"], id))
                     conn.commit()
 
                     response["price"] = "Price updated successfully"
@@ -376,7 +423,7 @@ def edit_book(id):
 
 #     response['status_code'] = 200
 #     response['data'] = all_books
-#     return jsonify(response) 
+#     return jsonify(response)
 
 
 if __name__ == "__main__":
