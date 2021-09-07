@@ -100,6 +100,38 @@ def book_table():
                  "FOREIGN KEY(user_id) REFERENCES users(id))")
     conn.close()
 
+
+def payments_table():
+    conn = sqlite3.connect('books_online_api.db')
+    print('db opened successfully')
+
+    conn.execute("CREATE TABLE IF NOT EXISTS payments("
+                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                 "user_id INTEGER NOT NULL,"
+                 "address_line_1 VARCHAR NOT NULL,"
+                 "address_line_2 VARCHAR NOT NULL,"
+                 "city VARCHAR NOT NULL,"
+                 "region VARCHAR NOT NULL,"
+                 "postal_code VARCHAR NOT NULL,"
+                 "country VARCHAR NOT NULL,"
+                 "card_number VARCHAR NOT NULL,"
+                 "card_holder VARCHAR NOT NULL,"
+                 "cvv VARCHAR NOT NULL,"
+                 "expiry_date VARCHAR NOT NULL,"
+                 "FOREIGN KEY(user_id) REFERENCES users(id))")
+    conn.close()
+
+def payments_books_table():
+    conn = sqlite3.connect('books_online_api.db')
+    print('db opened successfully')
+
+    conn.execute("CREATE TABLE IF NOT EXISTS payments_books("
+                 "book_id INTEGER NOT NULL,"
+                 "payment_id INTEGER NOT NULL,"
+                 "FOREIGN KEY(book_id) REFERENCES books(id),"
+                 "FOREIGN KEY(payment_id) REFERENCES payments(id))")
+    conn.close()
+
 # def user_profiles():
 #     conn = sqlite3.connect('books_online_api.db')
 
@@ -118,7 +150,8 @@ def book_table():
 
 user_table()
 book_table()
-
+payments_table()
+payments_books_table()
 
 def identity(payload):
     user_id = payload['identity']
