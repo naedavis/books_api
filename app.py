@@ -2,6 +2,7 @@ import hmac
 from logging import debug
 import sqlite3
 import os
+import json
 from flask import Flask, request, jsonify, flash, redirect, url_for, send_from_directory
 from flask.scaffold import F
 from flask_mail import Mail, Message
@@ -114,9 +115,9 @@ def payments_table():
                  "region VARCHAR NOT NULL,"
                  "postal_code VARCHAR NOT NULL,"
                  "country VARCHAR NOT NULL,"
-                 "card_number VARCHAR NOT NULL,"
+                 "card_number INTEGER NOT NULL,"
                  "card_holder VARCHAR NOT NULL,"
-                 "cvv VARCHAR NOT NULL,"
+                 "cvv INTEGER NOT NULL,"
                  "expiry_date VARCHAR NOT NULL,"
                  "FOREIGN KEY(user_id) REFERENCES users(id))")
     conn.close()
@@ -498,6 +499,68 @@ def edit_book(id):
 #     response['status_code'] = 200
 #     response['data'] = all_books
 #     return jsonify(response)
+
+@app.route('/create_payment/', methods=['POST'])
+def create_payment():
+    response = {}
+
+    if request.method == "POST":
+        user_id = 1
+        address_line_1 = request.form['address_line_1']
+        address_line_2 = request.form['address_line_2']
+        city = request.form['city']
+        region = request.form['region']
+        postal_code = request.form['postal_code']
+        country = request.form['country']
+        card_number = request.form['card_number']
+        card_holder = request.form['card_holder']
+        cvv = request.form['cvv']
+        expiry_date = request.form['expiry_date']
+
+        with sqlite3.connect('books_online_api.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO payments (user_id, address_line_1, address_line_2, city, region, postal_code, country, card_number, card_holder, cvv, expiry_date) "
+                " values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                , [user_id, address_line_1, address_line_2, city, region, postal_code, country, card_number, card_holder, cvv, expiry_date])
+            conn.commit()
+            payment_id = cursor.lastrowid
+
+        print("request", request.form['books'])
+        books = json.loads(request.form['books'])
+        print("books", books)
+
+        for book in books:
+            with sqlite3.connect('books_online_api.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO payments_books (book_id, payment_id) "
+                    " values(?, ?)"
+                    , [book['id'], payment_id])
+                conn.commit()
+
+        response["status"] = 200
+        response["message"] = "User added successfully"
+    return response
+
+
+# @app.route('/payments/', methods=['GET'])
+# def payments():
+#     with sqlite3.connect('books_online_api.db') as conn:
+#         cursor = conn.cursor()
+#         cursor.execute("SELECT * FROM payments")
+#         resp = cursor.fetchall()
+#         print("payments => ", resp)
+#         conn.commit()
+
+#     with sqlite3.connect('books_online_api.db') as conn:
+#         cursor = conn.cursor()
+#         cursor.execute("SELECT * FROM payments_books")
+#         resp = cursor.fetchall()
+#         print("payments_books => ", resp)
+#         conn.commit()
+
+#     return {}
 
 
 if __name__ == "__main__":
