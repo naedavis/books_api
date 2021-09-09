@@ -119,6 +119,7 @@ def payments_table():
                  "card_holder VARCHAR NOT NULL,"
                  "cvv INTEGER NOT NULL,"
                  "expiry_date VARCHAR NOT NULL,"
+                 "amount VARCHAR NOT NULL,"
                  "FOREIGN KEY(user_id) REFERENCES users(id))")
     conn.close()
 
@@ -516,13 +517,14 @@ def create_payment():
         card_holder = request.form['card_holder']
         cvv = request.form['cvv']
         expiry_date = request.form['expiry_date']
+        total = request.form['total']
 
         with sqlite3.connect('books_online_api.db') as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO payments (user_id, address_line_1, address_line_2, city, region, postal_code, country, card_number, card_holder, cvv, expiry_date) "
-                " values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                , [user_id, address_line_1, address_line_2, city, region, postal_code, country, card_number, card_holder, cvv, expiry_date])
+                "INSERT INTO payments (user_id, address_line_1, address_line_2, city, region, postal_code, country, card_number, card_holder, cvv, expiry_date, amount) "
+                " values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                , [user_id, address_line_1, address_line_2, city, region, postal_code, country, card_number, card_holder, cvv, expiry_date, total])
             conn.commit()
             payment_id = cursor.lastrowid
 
@@ -534,7 +536,7 @@ def create_payment():
             with sqlite3.connect('books_online_api.db') as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO payments_books (book_id, payment_id) "
+                    "INSERT INTO payments_books (book_id, payment_id)"
                     " values(?, ?)"
                     , [book['id'], payment_id])
                 conn.commit()
@@ -544,23 +546,45 @@ def create_payment():
     return response
 
 
-# @app.route('/payments/', methods=['GET'])
-# def payments():
-#     with sqlite3.connect('books_online_api.db') as conn:
-#         cursor = conn.cursor()
-#         cursor.execute("SELECT * FROM payments")
-#         resp = cursor.fetchall()
-#         print("payments => ", resp)
-#         conn.commit()
+@app.route('/customer_payments/', methods=['GET'])
+def payments():
+    response = {}
 
-#     with sqlite3.connect('books_online_api.db') as conn:
-#         cursor = conn.cursor()
-#         cursor.execute("SELECT * FROM payments_books")
-#         resp = cursor.fetchall()
-#         print("payments_books => ", resp)
-#         conn.commit()
+    user_id = 1
 
-#     return {}
+    payments = []
+
+    with sqlite3.connect('books_online_api.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT users.name, users.surname, payments.amount, books.book_title, 'bought' status"
+            "from payments_books"
+            "join payments on payments.id = payments_books.payment_id"
+            "join books on books.id = payments_books.book_id"
+            "join users on users.id = books.user_id"
+            "users.id = ?"
+
+            "union all"
+
+            "SELECT users.name, users.surname, payments.amount, books.book_title, 'sold' status"
+            "from payments_books"
+            "join payments on payments.id = payments_books.payment_id"
+            "join books on books.id = payments_books.book_id"
+            "join users on users.id = payments.user_id"
+            "users.id = ?"
+            , [user_id, user_id]
+            )
+        all_payments = cursor.fetchall()
+
+        for payment in all_payments:
+            payment.append({ 'name': payment[0], 'surname': payment[1], 'amount': payment[2], 'book_title': payment[3] })
+
+        response['status'] = 200
+        response['data'] = payments
+
+        conn.commit()
+
+    return jsonify(response)
 
 
 if __name__ == "__main__":
