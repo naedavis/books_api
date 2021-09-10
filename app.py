@@ -241,11 +241,20 @@ def view_all_books():
 
     with sqlite3.connect("books_online_api.db") as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT book_title, book_image, author, description, category, price, id FROM books")
+        cursor.execute("SELECT book_title, book_image, author, description, category, price, books.id, user_id, users.city FROM books join users on users.id = books.user_id")
         all_books = cursor.fetchall()
 
         for book in all_books:
-            books.append({ 'title': book[0], 'filename': book[1], 'author': book[2], 'description': book[3], 'category': book[4], 'price': book[5], 'id': book[6] })
+            books.append({
+                'title': book[0],
+                'filename': book[1],
+                'author': book[2],
+                'description': book[3],
+                'category': book[4],
+                'price': book[5],
+                'id': book[6],
+                'city': book[8]
+            })
 
 
     response['status_code'] = 200
