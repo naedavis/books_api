@@ -10,9 +10,10 @@ from flask_jwt import JWT, jwt_required, current_identity
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
+from jwt.api_jwt import PyJWT
+
 UPLOAD_FOLDER = './images'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
-
 
 class User(object):
     def __init__(self, id, name, surname, email, city, username, password):
@@ -62,10 +63,7 @@ class Database(object):
         self.cursor.execute(f"SELECT * FROM books WHERE city = '{city}'")
         self.cursor.fetchall()
 
-    # viewing all books from everyone everywhere
-
     # view by author
-
     def view_by_author(self, author):
         self.cursor.execute(f"SELECT * FROM books WHERE author = '{author}'")
         self.cursor.fetchall()
@@ -134,21 +132,6 @@ def payments_books_table():
                  "FOREIGN KEY(payment_id) REFERENCES payments(id))")
     conn.close()
 
-# def user_profiles():
-#     conn = sqlite3.connect('books_online_api.db')
-
-#     conn.execute("CREATE TABLE IF NOT EXISTS user_profiles("
-#                  "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-#                  "user_id INTEGER NOT NULL,"
-#                  "book_image TEXT NOT NULL,"
-#                  "book_title TEXT NOT NULL,"
-#                  "author TEXT NOT NULL,"
-#                  "description TEXT NOT NULL,"
-#                  "category TEXT NOT NULL,"
-#                  "price TEXT NOT NULL,"
-#                  "FOREIGN KEY(user_id) REFERENCES users(id))")
-#     conn.close()
-
 
 user_table()
 book_table()
@@ -157,7 +140,8 @@ payments_books_table()
 
 def identity(payload):
     user_id = payload['identity']
-    return userid_table.get(user_id, None)
+    user = userid_table.get(user_id, None)
+    return jsonify({user_id: user.id})
 
 
 def authenticate(username, password):
@@ -212,6 +196,12 @@ def protected():
     return '%s' % current_identity
 
 
+def get_user_logged_in(token):
+    pyjwt = PyJWT()
+    decode_token = pyjwt.decode(token, app.config['SECRET_KEY'], verify=False, algorithms=["hs256"])
+    return decode_token["identity"]
+
+
 @app.route('/registration/', methods=['POST'])
 def registration():
     response = {}
@@ -229,37 +219,6 @@ def registration():
 
         response["status"] = 200
         response["message"] = "User added successfully"
-    # elif request.method == "POST":
-    #     name = request.json['name']
-    #     surname = request.json['surname']
-    #     username = request.json['username']
-    #     password = request.json['password']
-    #     email = request.json['email']
-    #     city = request.json['city']
-
-    #     print(request.json)
-
-    #     database = Database()
-    #     database.register_user(name, surname, email, city, username, password)
-
-    #     with sqlite3.connect("books_online_api.db") as conn:
-    #         cursor = conn.cursor()
-    #         cursor.execute("INSERT INTO users VALUES(null,"
-    #                        "'" + name + "',"
-    #                        "'" + surname + "',"
-    #                        "'" + email + "',"
-    #                                     "'" + city + "',"
-    #                        "'" + username + "',"
-    #                        "'" + password + "')")
-
-    #     response["status"] = 200
-    #     response["message"] = "User added successfully"
-
-    # if response["status_code"] == 201:
-    #             msg = Message('Registration Successful', sender='lottogirl92@gmail.com', recipients=[email])
-    #             msg.body = "Welcome '" + str(name) + "', You have Successfully Registered as a user of this app"
-    #             mail.send(msg)
-    #             return "Sent email"
     return response
 
 
@@ -294,10 +253,13 @@ def view_all_books():
     return jsonify(response)
 
 
-@app.route('/view_books/<int:user_id>', methods=['GET'])
-def view_all_books_by_user_id(user_id):
+@app.route('/view_all_books_by_user/', methods=['GET'])
+@jwt_required()
+def view_all_books_by_user():
+    token = request.headers["Authorization"].replace("JWT ", "")
+    user_id = get_user_logged_in(token)
+    
     response = {}
-
     books = []
 
     with sqlite3.connect("books_online_api.db") as conn:
@@ -337,13 +299,14 @@ def view_book_by_id(book_id):
     response['data'] = book
     return jsonify(response)
 
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 @app.route('/add_books/', methods=['POST'])
-# @jwt_required()
+@jwt_required()
 def add_books():
     response = {}
 
@@ -362,8 +325,8 @@ def add_books():
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
         if request.method == "POST":
-            user_id = 1
-            # book_image = request.form['book_image']
+            token = request.headers["Authorization"].replace("JWT ", "")
+            user_id = get_user_logged_in(token)
             book_title = request.form['book_title']
             author = request.form['author']
             description = request.form['description']
@@ -410,15 +373,6 @@ def edit_book(id):
 
             print(incoming_data)
 
-            # if incoming_data.get("book_image") is not None:
-            #     put_data["book_image"] = incoming_data.get("book_image")
-            #     with sqlite3.connect('books_online_api.db') as conn:
-            #         cursor = conn.cursor()
-            #         cursor.execute(
-            #             "UPDATE books SET book_image =? WHERE id=?", (put_data["book_image"], id))
-            #         conn.commit()
-            #         response['message'] = "Update was successfully"
-            #         response['status_code'] = 200
             if incoming_data.get("book_title") is not None:
                 put_data['book_title'] = incoming_data.get('book_title')
 
@@ -488,25 +442,15 @@ def edit_book(id):
                     response["status_code"] = 200
     return response
 
-# @app.route('/view_books_by_city/<string:city>/', methods=['GET'])
-# def view_books_city(city):
-#     response = {}
-
-#     with sqlite3.connect("books_online_api.db") as conn:
-#         cursor = conn.cursor()
-#         city = cursor.execute("SELECT * FROM users WHERE city = '"+ city +"' ")
-#         all_books = cursor.fetchall()
-
-#     response['status_code'] = 200
-#     response['data'] = all_books
-#     return jsonify(response)
 
 @app.route('/create_payment/', methods=['POST'])
+@jwt_required()
 def create_payment():
     response = {}
 
     if request.method == "POST":
-        user_id = 1
+        token = request.headers["Authorization"].replace("JWT ", "")
+        user_id = get_user_logged_in(token)
         address_line_1 = request.form['address_line_1']
         address_line_2 = request.form['address_line_2']
         city = request.form['city']
@@ -547,12 +491,13 @@ def create_payment():
 
 
 @app.route('/customer_payments/', methods=['GET'])
+@jwt_required()
 def payments():
     response = {}
-
-    user_id = 1
-
     payments = []
+
+    token = request.headers["Authorization"].replace("JWT ", "")
+    user_id = get_user_logged_in(token)
 
     with sqlite3.connect('books_online_api.db') as conn:
         cursor = conn.cursor()
@@ -562,15 +507,6 @@ def payments():
             "join payments on payments.id = payments_books.payment_id"
             "join books on books.id = payments_books.book_id"
             "join users on users.id = books.user_id"
-            "users.id = ?"
-
-            "union all"
-
-            "SELECT users.name, users.surname, payments.amount, books.book_title, 'sold' status"
-            "from payments_books"
-            "join payments on payments.id = payments_books.payment_id"
-            "join books on books.id = payments_books.book_id"
-            "join users on users.id = payments.user_id"
             "users.id = ?"
             , [user_id, user_id]
             )
