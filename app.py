@@ -173,8 +173,6 @@ users = fetch_users()
 username_table = {u.username: u for u in users}
 userid_table = {u.id: u for u in users}
 
-print(username_table)
-
 app = Flask(__name__, static_url_path='/')
 CORS(app)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -216,6 +214,15 @@ def registration():
 
         database = Database()
         database.register_user(name, surname, email, city, username, password)
+
+        global users
+        global username_table
+        global userid_table
+
+        users = fetch_users()
+        # variable that are getting the username and id of the users
+        username_table = {u.username: u for u in users}
+        userid_table = {u.id: u for u in users}
 
         response["status"] = 200
         response["message"] = "User added successfully"
